@@ -22,13 +22,13 @@ with open('v4-cuda.cc', 'r') as cudasourcefile:
 mod = SourceModule(cudasource)
 
 # Get out our function
-parse_csv = mod.get_function("parse_csv")
+count_lines = mod.get_function("count_lines")
 
 # We read our data in chunks, as it's too big for some GPUs
 blocksize = 100 * 1000 * 1000 # 100MB
 
 # Read our CSV file in to an numpy array
-csvfile = numpy.fromfile('airlines.csv', dtype='int8', count=maxbytes)
+csvfile = numpy.fromfile('airlines-10M.csv', dtype='int8', count=maxbytes)
 
 # Transfer a block at a time to the GPU
 
@@ -36,10 +36,8 @@ numrows = 0
 numbytes = 0
 
 chunk_gpu = drv.mem_alloc(blocksize)
-states_gpu = drv.mem_alloc(blocksize * 4)
 
 numlines = numpy.zeros(1, dtype='int32')
-initialstate = numpy.zeros(1, dtype='int32')
 
 while numbytes < len(csvfile) and numrows < maxrows:
     chunk = csvfile[numbytes:numbytes + blocksize]
@@ -57,22 +55,13 @@ while numbytes < len(csvfile) and numrows < maxrows:
     print('nbytes {}'.format(nbytesarray))
     
     # run the CSV parser
-    parse_csv(chunk_gpu,
-              drv.In(nbytesarray),
-              drv.In(initialstate),
-              states_gpu,
-              drv.InOut(numlines),
-              block=(1,1,1),
-              grid=(1,1))
+    count_lines(chunk_gpu,
+                numpy.uint32(nbytesarray),
+                drv.InOut(numlines),
+                block=(1,1,1),
+                grid=(1,1))
 
     print('numlines = {}'.format(numlines[0]))
-
-#dest = numpy.zeros_like(a)
-#multiply_them(
-#        drv.Out(dest), drv.In(a), drv.In(b),
-#        block=(400,1,1), grid=(1,1))
-
-#print(dest-a*b)
 
 
 end_time = time.time()

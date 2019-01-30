@@ -1,6 +1,7 @@
 import csv
 import tracemalloc
 import time
+import fastnumbers
 
 tracemalloc.start()
 
@@ -30,10 +31,15 @@ with open('airlines-10M.csv') as csvfile:
 
         # Look up values in dictionary to save memory on duplicates
         for i in range(1, len(row)):
-            val = dicts[i].get(row[i])
+            val = fastnumbers.fast_real(row[i], default=None)
+
             if val is None:
-                dicts[i][row[i]] = row[i]
-                val = row[i]
+                val = dicts[i].get(row[i])
+
+                if val is None:
+                    dicts[i][row[i]] = row[i]
+                    val = row[i]
+
             row[i] = val
             
         rows.append(row)

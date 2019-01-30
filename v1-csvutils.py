@@ -10,7 +10,7 @@ start_time = time.time();
 
 numrows = 0
 
-with open('airlines.csv') as csvfile:
+with open('airlines-10M.csv') as csvfile:
     filereader = csv.reader(csvfile, delimiter=',', quotechar='\'')
     rows = []
     for row in filereader:

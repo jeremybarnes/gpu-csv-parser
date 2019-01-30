@@ -307,18 +307,3 @@ __global__ void parse_lines(const char * csvData,
         //}
     }
 }
-                           
-__global__ void analyzeColumn(const char * csvData,
-                              const unsigned csvDataOffset,
-                              FieldData * fields,
-                              const int numLines,
-                              const int numFields)
-{
-    int column = blockIdx.y;
-
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x;
-         i < numLines;
-         i += blockDim.x * gridDim.x) {
-        
-    }    
-}

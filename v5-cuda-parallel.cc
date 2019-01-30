@@ -1,73 +1,47 @@
-enum {
-    NO_ACTION = 0,
-    EMIT_FIELD = 1,
-    EMIT_EOL = 128
-};
-
-typedef int Action;
-
-enum State {
-    ST_FIELD,
-    ST_INVALID
-};
-
-__device__ Action nextState(State & state, char c)
+__global__ void
+count_lines(const char * csvdata,
+            const unsigned blockSize,
+            int * numLinesOut)
 {
-    Action action;
-    
-    switch (c) {
-    case ',':
-        action = EMIT_FIELD;
-        break;
-    case '\n':
-        action = EMIT_FIELD | EMIT_EOL;
-        break;
-    default:
-        action = NO_ACTION;
-        break;
-    }
-
-    return action;
-}
-
-
-__global__ void parse_csv(const char * csvdata,
-                          const int * blockSizePtr,
-                          const int * initialState,
-                          int * states,
-                          int * numLinesOut)
-{
+    // This variable is shared across all threads in the block
     __shared__ int blockNumLines;
 
+    // If we're the first thread in the block, we initialize to zero
     if (threadIdx.x == 0) {
         blockNumLines = 0;
     }
-    __syncthreads();
-    
-    const int blockSize = *blockSizePtr;
 
+    // Wait for everyone to get here so we all see an initialized variable
+    __syncthreads();
+
+    // Local (register) count of the number of lines in the block
     int threadNumLines = 0;
 
-    //printf("bidx %d bdim %d tidx %d gdim %d start %d inc %d\n",
-    //       blockIdx.x, blockDim.x, threadIdx.x, gridDim.x,
-    //       blockIdx.x * blockDim.x + threadIdx.x,
-    //       blockDim.x * gridDim.x);
-    
+    // Divide memory up per thread and per block, and start at a unique place
+    // per thread
     for (int i = blockIdx.x * blockDim.x + threadIdx.x;
          i < blockSize;
          i += blockDim.x * gridDim.x) {
+
+        // We read our character.  This is done massively in parallel
         char c = csvdata[i];
+
+        // Count our newlines
         if (c == '\n') {
             ++threadNumLines;
         }
     }
 
+    // Add our thread count to our block count.  This needs to be atomic since
+    // all threads will arrive here at the same time with their count.
     atomicAdd_block(&blockNumLines, threadNumLines);
 
+    // Ensure that all threads have added their count to our block count
     __syncthreads();
 
+    // The first thread in the block adds atomically to the global output
+    // variable
     if (threadIdx.x == 0) {
-        //printf("blockNumLines = %d\n", blockNumLines);
         atomicAdd(numLinesOut, blockNumLines);
     }
 }

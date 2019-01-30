@@ -1,3 +1,5 @@
+extern "C" {
+
 typedef unsigned uint32_t;
 typedef unsigned long uint64_t;
 
@@ -316,10 +318,11 @@ enum FieldType {
     FT_NULL,
     FT_INT,
     FT_DOUBLE,
-    FT_RAW_STRING,
-    FT_QUOTED_STRING,
     FT_ERROR,
     
+    FT_RAW_STRING,
+    FT_QUOTED_STRING,
+
     FT_SHORT_STRING_L0 = 8,
     FT_SHORT_STRING_L1,
     FT_SHORT_STRING_L2,
@@ -330,6 +333,11 @@ enum FieldType {
     FT_SHORT_STRING_L7,
 };
 
+__device__ bool isString(FieldType t)
+{
+    return t >= FT_RAW_STRING;
+}
+    
 struct FieldData {
     unsigned type;
     unsigned hash;
@@ -573,16 +581,66 @@ __global__ void parse_lines(const char * csvData,
         //}
     }
 }
-                           
+
+struct HashBucket {
+    union {
+        struct {
+            uint32_t key;
+            uint32_t fieldIndex;
+        };
+        uint64_t bits;
+    };
+};
+
+__device__ void analyze_column(const char * csvData,
+                               FieldData * fields,
+                               const int numLines)
+{
+    constexpr int MAX_SIZE = 2048;
+
+    __shared__ unsigned occupancy;
+    __shared__ HashBucket buckets[MAX_SIZE];
+    
+    if (threadIdx.x == 0)
+        occupancy = 0;
+
+    for (int i = threadIdx.x;  i < numLines && numStringHashes < 4000;
+         i += blockDim.x) {
+        buckets[i].key = buckets[i].fieldIndex = 0;
+    }
+
+    __syncthreads();
+
+    for (int i = threadIdx.x;  i < numLines && numStringHashes < 4000;
+         i += blockDim.x) {
+        if (isString((FieldType)fields[i].type)) {
+            
+
+            unsigned hashNum = atomicAdd(&numStringHashes, 1);
+            //printf("got hash num %d for hash %d col %d\n", hashNum, fields[i].hash,
+            //       blockIdx.x);
+            if (hashNum >= 4000)
+                break;
+            stringHashes[hashNum] = fields[i].hash;
+        }
+    }
+
+    __syncthreads();
+
+    if (threadIdx.x == 0)
+        printf("got %d hashes for column %d\n", numStringHashes, blockIdx.x);
+}
+
 __global__ void analyze_columns(const char * csvData,
                                 const unsigned csvDataOffset,
                                 FieldData * fields,
                                 const int numLines,
                                 const int numFields)
 {
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x;
-         i < numLines;
-         i += blockDim.x * gridDim.x) {
-        
-    }    
+    int field = blockIdx.x;
+    analyze_column(csvData + csvDataOffset,
+                   fields + (numLines * field),
+                   numLines);
 }
+
+} // extern "C"
